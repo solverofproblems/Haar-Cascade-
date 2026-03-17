@@ -1,24 +1,80 @@
 import cv2
+import os
+import sys
 import time
 
-face_cascade = cv2.CascadeClassifier(
-    # É importante que você mantenha exatamente dessa forma!
-    # Quando instalamos a biblioteca OpenCV, ela já vem com esse classificador pré-treinado.
-    cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+def _try_load_cascade(path: str):
+    """Tenta criar um CascadeClassifier para o caminho informado.
 
-)
+    Retorna o CascadeClassifier carregado com sucesso ou None caso falhe.
+    """
+    if not os.path.isfile(path):
+        return None
 
-#Essa parte você pode remover se desejar, mas recomendo por uma questão de segurança.
-if face_cascade.empty():
-    print("Erro ao carregar o classificador.")
-else:
-    print("Classificador carregado com sucesso.")
+    cc = cv2.CascadeClassifier(path)
+    return cc if not cc.empty() else None
 
-#Aqui estamos carregando a imagem desejada. Note que você pode alterá-la se quiser.
+
+def _short_path(path: str) -> str:
+    """Retorna o caminho curto (8.3) no Windows para evitar problemas com caracteres.
+
+    Alguns builds do OpenCV não lidam bem com caminhos que contêm acentos ou caracteres Unicode.
+    """
+    if os.name != 'nt':
+        return path
+
+    try:
+        import ctypes
+
+        buf = ctypes.create_unicode_buffer(260)
+        if ctypes.windll.kernel32.GetShortPathNameW(path, buf, len(buf)):
+            return buf.value
+    except Exception:
+        pass
+
+    return path
+
+
+# Tenta carregar o classificador Haar Cascade do OpenCV e de caminhos alternativos.
+cascade_names = ['haarcascade_frontalface_default.xml']
+primary_dir = cv2.data.haarcascades
+
+cascade_paths = []
+for name in cascade_names:
+    cascade_paths.append(os.path.join(primary_dir, name))
+    cascade_paths.append(_short_path(os.path.join(primary_dir, name)))
+    cascade_paths.append(os.path.join(os.path.dirname(__file__), name))
+
+face_cascade = None
+loaded_path = None
+for p in cascade_paths:
+    face_cascade = _try_load_cascade(p)
+    if face_cascade is not None:
+        loaded_path = p
+        break
+
+if face_cascade is None:
+    tried = '\n'.join(f" - {p!r}" for p in cascade_paths)
+    sys.exit(
+        "Erro: não foi possível carregar o classificador Haar Cascade.\n"
+        "Verifique se o arquivo existe em um destes caminhos (e se o OpenCV consegue lê-lo):\n"
+        f"{tried}\n\n"
+        "Dica: caminhos com acentos ou caracteres Unicode podem causar esse problema no Windows.\n"
+        "Considere mover o projeto para uma pasta sem acentos."
+    )
+
+print(f"Classificador carregado com sucesso (usando: {loaded_path})")
+
+# Aqui estamos carregando a imagem desejada. Note que você pode alterá-la se quiser.
 imagem = cv2.imread('alanturing.jpg')
+if imagem is None:
+    sys.exit(
+        "Erro: não foi possível carregar a imagem 'alanturing.jpg'.\n"
+        "Verifique se o arquivo existe no diretório atual."
+    )
 
-#Aqui transformamos a imagem para escala cinza, facilitando a análise do classificador.
-#Lembre-se que o classificador foi treinado para trabalhar com imagens nessa escala, logo, é boa prática preservá-la assim.
+# Aqui transformamos a imagem para escala cinza, facilitando a análise do classificador.
+# Lembre-se que o classificador foi treinado para trabalhar com imagens nessa escala, logo, é boa prática preservá-la assim.
 img_cinza = cv2.cvtColor(imagem, cv2.COLOR_BGR2GRAY)
 
 
